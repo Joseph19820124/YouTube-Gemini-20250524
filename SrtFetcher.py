@@ -191,4 +191,28 @@ if __name__ == "__main__":
         logger.info(f"开始处理 {total_ids} 个YouTube ID...")
         
         for index, current_video_id in enumerate(youtube_ids_list):
-            logger.info(f"正在处理第 {index + 1}/{
+            logger.info(f"正在处理第 {index + 1}/{total_ids} 个ID: {current_video_id}") # 控制台可见
+            api_response = fetch_srt_data(current_video_id)
+            
+            # (可选) 如果需要将获取到的内容保存到文件
+            # if api_response:
+            #     try:
+            #         # 尝试解析为JSON并美化保存 (如果API返回的是JSON)
+            #         parsed_api_response = json.loads(api_response)
+            #         with open(f"{current_video_id}_response.json", "w", encoding="utf-8") as f:
+            #             json.dump(parsed_api_response, f, indent=2, ensure_ascii=False)
+            #         logger.info(f"YouTube ID {current_video_id} 的JSON响应已美化并保存到 {current_video_id}_response.json")
+            #     except json.JSONDecodeError:
+            #         # 如果不是JSON，直接保存文本
+            #         with open(f"{current_video_id}_response.txt", "w", encoding="utf-8") as f:
+            #             f.write(api_response)
+            #         logger.info(f"YouTube ID {current_video_id} 的文本响应已保存到 {current_video_id}_response.txt")
+
+
+            if index < total_ids - 1:
+                if args.delay > 0:
+                    logger.debug(f"暂停 {args.delay} 秒后处理下一个请求...")
+                    time.sleep(args.delay)
+
+        logger.info("所有YouTube ID处理完毕。")
+    logger.info("SRT Fetcher (Python脚本) 运行结束。")
