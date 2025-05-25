@@ -8,7 +8,7 @@ import time
 import argparse
 from datetime import datetime
 from zoneinfo import ZoneInfo # Requires Python 3.9+
-import requests # <--- 确保这一行存在
+import requests
 
 # --- Configuration ---
 API_URL = "https://lic.deepsrt.cc/webhook/get-srt-from-provider"
@@ -79,7 +79,8 @@ def read_youtube_ids(file_path: str) -> list:
         logger.error(f"读取CSV文件 {file_path} 时发生错误: {e}", exc_info=True)
     return ids
 
-def fetch_srt_data(youtube_id: str) -> str | None:
+# <<< 修改点：增加 current_index 和 total_count 参数 >>>
+def fetch_srt_data(youtube_id: str, current_index: int, total_count: int) -> str | None:
     payload = {
         "youtube_id": youtube_id,
         "fetch_only": "false"
@@ -89,22 +90,21 @@ def fetch_srt_data(youtube_id: str) -> str | None:
         "User-Agent": "SRTFetcherPythonScript/1.0"
     }
 
-    logger.info(f"准备为YouTube ID发送请求: {youtube_id}") # 控制台可见
+    # <<< 修改点：创建日志前缀，包含循环因子 >>>
+    log_prefix = f"[处理 {current_index}/{total_count} - ID: {youtube_id}]"
+
+    logger.info(f"{log_prefix} 准备发送请求...") # 控制台可见，现在也带了前缀
 
     # --- 构造并记录模拟的 CURL 命令 (DEBUG级别, 主要写入文件) ---
     curl_headers_str = ""
     for key, value in headers.items():
         curl_headers_str += f" -H \"{key}: {value}\""
     
-    # 为了日志可读性，payload也美化一下
     pretty_payload_for_curl_log = json.dumps(payload, indent=2, ensure_ascii=False)
     
-    # 注意: -d 后面的内容应该是单引号包围的JSON字符串。如果JSON本身包含单引号，需要转义。
-    # requests库的json=payload参数会自动处理正确的JSON序列化。
-    # 此处curl_command主要用于日志记录和调试参考。
-    curl_command_log = f"""
+    curl_command_log = f"""{log_prefix}
 vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-模拟CURL命令 (供参考) for YouTube ID: {youtube_id}
+模拟CURL命令 (供参考)
 --------------------------------------------------------------------------------
 curl -X POST \\{curl_headers_str} \\
 -d '{json.dumps(payload)}' \\
@@ -117,47 +117,45 @@ curl -X POST \\{curl_headers_str} \\
     logger.debug(curl_command_log)
 
     # --- 记录实际发送的请求细节 (DEBUG级别) ---
-    logger.debug(f"--> 实际请求目标 URL: {API_URL}")
-    logger.debug(f"--> 实际请求方法: POST")
-    logger.debug(f"--> 实际请求头 (美化):\n{json.dumps(headers, indent=2, ensure_ascii=False)}")
-    logger.debug(f"--> 实际请求体 (美化):\n{json.dumps(payload, indent=2, ensure_ascii=False)}")
+    logger.debug(f"{log_prefix} --> 实际请求目标 URL: {API_URL}")
+    logger.debug(f"{log_prefix} --> 实际请求方法: POST")
+    logger.debug(f"{log_prefix} --> 实际请求头 (美化):\n{json.dumps(headers, indent=2, ensure_ascii=False)}")
+    logger.debug(f"{log_prefix} --> 实际请求体 (美化):\n{json.dumps(payload, indent=2, ensure_ascii=False)}")
 
     try:
         response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
 
         # --- 记录接收到的响应细节 (DEBUG级别, 主要写入文件) ---
-        logger.debug(f"<-- 响应状态码 for {youtube_id}: {response.status_code}")
+        logger.debug(f"{log_prefix} <-- 响应状态码: {response.status_code}")
         
-        response_headers_dict = dict(response.headers) # requests的headers是类字典对象
-        logger.debug(f"<-- 响应头 for {youtube_id} (美化):\n{json.dumps(response_headers_dict, indent=2, ensure_ascii=False)}")
+        response_headers_dict = dict(response.headers)
+        logger.debug(f"{log_prefix} <-- 响应头 (美化):\n{json.dumps(response_headers_dict, indent=2, ensure_ascii=False)}")
         
         response_body_text = response.text
-        log_entry_for_response_body = f"<-- 响应体 for {youtube_id}:\n"
+        log_entry_for_response_body = f"{log_prefix} <-- 响应体:\n"
         try:
-            # 尝试美化JSON响应体
             parsed_json_response = json.loads(response_body_text)
             pretty_response_body = json.dumps(parsed_json_response, indent=2, ensure_ascii=False)
             log_entry_for_response_body += pretty_response_body
         except json.JSONDecodeError:
-            # 如果不是JSON，直接记录文本
             log_entry_for_response_body += response_body_text
         logger.debug(log_entry_for_response_body)
 
         # --- 控制台INFO级别日志，简洁报告结果 ---
         response_snippet = response_body_text[:150] + '...' if len(response_body_text) > 150 else response_body_text
         if 200 <= response.status_code < 300:
-            logger.info(f"成功: YouTube ID {youtube_id} (状态码: {response.status_code}). 响应片段: {response_snippet}")
+            logger.info(f"{log_prefix} 成功 (状态码: {response.status_code}). 响应片段: {response_snippet}")
             return response_body_text
         else:
-            logger.warning(f"失败: YouTube ID {youtube_id} (状态码: {response.status_code}). 响应片段: {response_snippet}")
+            logger.warning(f"{log_prefix} 失败 (状态码: {response.status_code}). 响应片段: {response_snippet}")
             return None
 
     except requests.exceptions.Timeout:
-        logger.error(f"请求YouTube ID {youtube_id} 至URL {API_URL} 超时。", exc_info=False)
+        logger.error(f"{log_prefix} 请求URL {API_URL} 超时。", exc_info=False)
     except requests.exceptions.ConnectionError:
-        logger.error(f"连接YouTube ID {youtube_id} 至URL {API_URL} 失败。", exc_info=False)
+        logger.error(f"{log_prefix} 连接URL {API_URL} 失败。", exc_info=False)
     except requests.exceptions.RequestException as e:
-        logger.error(f"为YouTube ID {youtube_id} 发送请求时发生错误: {e}", exc_info=True)
+        logger.error(f"{log_prefix} 发送请求时发生错误: {e}", exc_info=True)
     return None
 
 # --- Main Execution ---
@@ -187,29 +185,17 @@ if __name__ == "__main__":
     if not youtube_ids_list:
         logger.warning("没有需要处理的YouTube ID。脚本退出。")
     else:
-        total_ids = len(youtube_ids_list)
-        logger.info(f"开始处理 {total_ids} 个YouTube ID...")
+        total_ids_count = len(youtube_ids_list) # <<< 修改点：变量名更清晰 >>>
+        logger.info(f"开始处理 {total_ids_count} 个YouTube ID...")
         
         for index, current_video_id in enumerate(youtube_ids_list):
-            logger.info(f"正在处理第 {index + 1}/{total_ids} 个ID: {current_video_id}") # 控制台可见
-            api_response = fetch_srt_data(current_video_id)
+            # 下面这行INFO日志主要用于控制台实时显示当前处理到哪个ID，本身已包含循环因子
+            logger.info(f"主循环: 正在处理第 {index + 1}/{total_ids_count} 个ID: {current_video_id}")
             
-            # (可选) 如果需要将获取到的内容保存到文件
-            # if api_response:
-            #     try:
-            #         # 尝试解析为JSON并美化保存 (如果API返回的是JSON)
-            #         parsed_api_response = json.loads(api_response)
-            #         with open(f"{current_video_id}_response.json", "w", encoding="utf-8") as f:
-            #             json.dump(parsed_api_response, f, indent=2, ensure_ascii=False)
-            #         logger.info(f"YouTube ID {current_video_id} 的JSON响应已美化并保存到 {current_video_id}_response.json")
-            #     except json.JSONDecodeError:
-            #         # 如果不是JSON，直接保存文本
-            #         with open(f"{current_video_id}_response.txt", "w", encoding="utf-8") as f:
-            #             f.write(api_response)
-            #         logger.info(f"YouTube ID {current_video_id} 的文本响应已保存到 {current_video_id}_response.txt")
-
-
-            if index < total_ids - 1:
+            # <<< 修改点：传递 current_index 和 total_count 给 fetch_srt_data >>>
+            api_response = fetch_srt_data(current_video_id, index + 1, total_ids_count)
+            
+            if index < total_ids_count - 1:
                 if args.delay > 0:
                     logger.debug(f"暂停 {args.delay} 秒后处理下一个请求...")
                     time.sleep(args.delay)
