@@ -8,6 +8,8 @@ import time
 import argparse
 from datetime import datetime
 from zoneinfo import ZoneInfo # Requires Python 3.9+
+import requests # <--- MAKE SURE THIS LINE IS PRESENT AND NOT COMMENTED OUT
+
 
 # --- Configuration ---
 API_URL = "https://lic.deepsrt.cc/webhook/get-srt-from-provider"
